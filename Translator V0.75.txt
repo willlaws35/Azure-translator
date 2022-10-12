@@ -1,0 +1,315 @@
+#disclaimer, I need to clear up the comments, but for now theyre a good laugh while trying not to lose you're mind
+#-----------------------------------------------------------------------------------------------------------------------
+
+#hey you know how fun installing libraries are right ?.... so kind of need every one of these or the program will become a black hole
+#easiest way to install is simply go to cmd and typr "pip install" then the library so for the first one
+# "pip install azure-cognitiveservices-speech" could probably automate this but nah I've had enough
+#-----------------------------------------------------------------------------------------------------------------------
+import azure.cognitiveservices.speech as speechsdk
+import PySimpleGUI as sg
+import winsound
+import librosa
+import wave
+import json
+import time
+import os
+from playsound import playsound
+
+#theme set for alternatives: https://www.geeksforgeeks.org/themes-in-pysimplegui/
+
+
+#some variables which need to be moved, but where ?  I haven't decided yet magic man!
+FileList = []
+Origins = []
+Translations = []
+OriginsSplit = []
+TranslationsSplit = []
+
+SplitPoint = 0
+theme_set = 0
+theme_set_back_up = 0
+Language_Get = "TEMP"
+ProgramShut = True
+
+def TextReadInOrigins():
+    OriginsComp = ""
+    temp_1 = len(Origins)
+    temp_2 = 0
+    while (temp_2 < temp_1):
+        OriginsComp = str(OriginsComp) + str(Origins[temp_2])
+        temp_2 = temp_2 + 1
+    TextLen = []
+    LineMaker = ""
+    TextChunk = OriginsComp
+    TextLen = TextChunk.split()
+    for i in range(len(TextLen)):
+        if len(LineMaker)<60:
+            LineMaker = LineMaker+TextLen[i]+" "
+        elif len(LineMaker)>=60:
+            OriginsSplit.append(LineMaker)
+            LineMaker = " "
+            LineMaker = LineMaker+TextLen[i]+" "
+
+def TextReadInTranslations():
+    TranslationsComp = ""
+    temp_1 = len(Translations)
+    temp_2 = 0
+    while (temp_2 < temp_1):
+        TranslationsComp = str(TranslationsComp) + str(Translations[temp_2])
+        temp_2 = temp_2 +1
+    TextLen = []
+    LineMaker = ""
+    TextChunk = TranslationsComp
+    TextLen = TextChunk.split()
+    for i in range(len(TextLen)):
+        if len(LineMaker)<60:
+            LineMaker = LineMaker+TextLen[i]+" "
+        elif len(LineMaker)>=60:
+            TranslationsSplit.append(LineMaker)
+            LineMaker = " "
+            LineMaker = LineMaker+TextLen[i]+" "
+
+def SourceAzure(Source):
+    speech_key, service_region = "bc26117a081546a8ab8accfc840bed51", "uksouth"
+    endpoint_string = "wss://{}.stt.speech.microsoft.com/speech/universal/v2".format(service_region)
+    translation_config = speechsdk.translation.SpeechTranslationConfig(
+        subscription=speech_key,
+        endpoint=endpoint_string,
+        speech_recognition_language='en-GB',
+        target_languages=('en-GB'))
+    audio_config = speechsdk.audio.AudioConfig(filename=Source)
+    translation_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceConnection_SingleLanguageIdPriority,value='Accuracy')
+    auto_detect_source_language_config = speechsdk.languageconfig.AutoDetectSourceLanguageConfig \
+        (languages=["en-US", "de-DE", 'en-GB'])
+    recognizer = speechsdk.translation.TranslationRecognizer(translation_config=translation_config,audio_config=audio_config,auto_detect_source_language_config=auto_detect_source_language_config)
+
+
+    def result_callback(event_type, evt):
+        """callback to display a translation result"""
+        DataBack = ""
+        print(evt.result.text)
+        DataBack = (evt.result.json)
+        DataBack = DataBack.split('"')
+        print(DataBack[39])
+        if DataBack[39] != "Unknown":
+            Language_Get = DataBack[39]
+    done = False
+
+    def stop_cb(evt):
+        """callback that signals to stop continuous recognition upon receiving an event `evt`"""
+        print('CLOSING on {}'.format(evt))
+        done = True
+
+
+    recognizer.session_started.connect(lambda evt: print('SESSION STARTED: {}'.format(evt)))
+    recognizer.session_stopped.connect(lambda evt: print('SESSION STOPPED {}'.format(evt)))
+    recognizer.recognizing.connect(lambda evt: result_callback('RECOGNIZING', evt))
+    recognizer.recognized.connect(lambda evt: result_callback('RECOGNIZED', evt))
+    recognizer.canceled.connect(lambda evt: print('CANCELED: {} ({})'.format(evt, evt.reason)))
+    recognizer.session_stopped.connect(stop_cb)
+    recognizer.canceled.connect(stop_cb)
+
+    def synthesis_callback(evt):
+        """
+        callback for the synthesis event
+        """
+        print('SYNTHESIZING {}\n\treceived {} bytes of audio. Reason: {}'.format(
+            evt, len(evt.result.audio), evt.result.reason))
+        if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+            print("RECOGNIZED: {}".format(evt.result.properties))
+            if evt.result.properties.get(
+                    speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult) == None:
+                print("Unable to detect any language")
+            else:
+                detectedSrcLang = evt.result.properties[
+                    speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult]
+                jsonResult = evt.result.properties[speechsdk.PropertyId.SpeechServiceResponse_JsonResult]
+                detailResult = json.loads(jsonResult)
+                startOffset = detailResult['Offset']
+                duration = detailResult['Duration']
+                if duration >= 0:
+                    endOffset = duration + startOffset
+                else:
+                    endOffset = 0
+                global language_detected
+                language_detected = True
+
+    recognizer.synthesizing.connect(synthesis_callback)
+    recognizer.start_continuous_recognition()
+    while not done:
+        time.sleep(.5)
+    recognizer.stop_continuous_recognition()
+
+
+#---------------------------------------------------------------------------------------------------------------------------
+
+def Azure(file,LangGet):
+    audiofile = file
+    speech_key, service_region = 'bc26117a081546a8ab8accfc840bed51', 'uksouth'
+
+    translation_config = speechsdk.translation.SpeechTranslationConfig(subscription=speech_key, region=service_region)
+    speech_recognition_language = LangGet
+    target_languages = 'en-GB'
+
+    translation_config.speech_recognition_language = speech_recognition_language
+    translation_config.add_target_language(target_languages)
+    audio_config = speechsdk.audio.AudioConfig(filename=audiofile)
+    recognizer = speechsdk.translation.TranslationRecognizer(
+        translation_config=translation_config, audio_config=audio_config)
+
+    def result_callback(event_type, evt):
+        TranslationsRecord = ""
+        TranslationsRec = ""
+        print("running...")
+        Origins.append(evt.result.text)
+        TranslationsRec = evt.result.translations.items()
+        TranslationsRecord = TranslationsRec[0]
+        Translations.append(TranslationsRecord[1])
+    done = False
+
+    def stop_cb(evt):
+        """callback that signals to stop continuous recognition upon receiving an event `evt`"""
+        print('CLOSING on {}'.format(evt))
+        nonlocal done
+        done = True
+
+    # connect callback functions to the events fired by the recognizer
+    recognizer.session_started.connect(lambda evt: print('SESSION STARTED: {}'.format(evt)))
+    recognizer.session_stopped.connect(lambda evt: print('SESSION STOPPED {}'.format(evt)))
+    # event for final result
+    recognizer.recognized.connect(lambda evt: result_callback('RECOGNIZED', evt))
+    # cancellation event
+    recognizer.canceled.connect(lambda evt: print('CANCELED: {} ({})'.format(evt, evt.reason)))
+
+    # stop continuous recognition on either session stopped or canceled events
+    recognizer.session_stopped.connect(stop_cb)
+    recognizer.canceled.connect(stop_cb)
+    # start translation
+    recognizer.start_continuous_recognition()
+
+    while not done:
+        sg.time.sleep(.5)
+
+    recognizer.stop_continuous_recognition()
+
+#essentially main, issues a plenty here, mainly file management via the drop down list but I'll just pretend I dont see it
+#-----------------------------------------------------------------------------------------------------------------------
+def addfile(theme_set):
+    temp_theme_set = theme_set
+    if theme_set == 0:
+        sg.theme('LightGrey6')
+    if theme_set == 1:
+        sg.theme('DarkGrey6')
+    # dark mode theme = DarkGrey6
+    # light mode theme = LightGrey6... i think
+    WinRun = True
+    layout = [[sg.Text('File:', size=4), sg.Input(key='_In_', do_not_clear=False), sg.FileBrowse(), sg.Submit(key = 'Submit'), sg.Button("Play")],
+              [sg.Text("Files:"), sg.Combo(FileList, size = 67, key = '_Output_')],
+              [sg.Text('')],
+              [sg.Text("Origin feedback:"), sg.Combo(OriginsSplit, size = 58)],
+              [sg.Text("Translation feedback:"), sg.Combo(TranslationsSplit, size=54)],
+              [sg.Text('')],
+              [sg.Button("Change Theme"), sg.Button("Help")]]
+    #Don't you just love this formatting *chef's kiss*
+    layout_1 = [[sg.Text("")],
+                [sg.Text("")],
+                [sg.Text("                                                Waiting to begin processing...")],
+                [sg.Text("                                       Translation time can sometimes be high, ")],
+                [sg.Text("       this may be due to high traffic, poor internet connection, or due to large file sizes.")],
+                [sg.Text("                              Please be patient as this may take up to ten minutes.")],
+                [sg.Text("")],
+                [sg.Text("                                      Are you sure you want to begin translation ?")],
+                [sg.Text("                                                        "),sg.Button("Yes"), sg.Button("No")]]
+
+    window = sg.Window('Translator V0.75', layout, size=(565,300))
+    window_1 = sg.Window('Translator V0.75', layout_1, size=(565,300))
+
+    #version plans because planning ....?
+    #-------------------------------------------------------------------------------------------------------------------
+    #V0.1 = initial program window
+    #V0.2 = text feedback and audio replay
+    #V0.3 = *hopefully* help function and azure integration
+    #V0.4 = should be azure integration like fuck that happening at V0.3
+    #V0.5 = I said integrartion, never meant it was going to be good, so V0.5 get good newb
+    #V0.6 = full integration and translation rather than partial translation because the microsofts dont like musics.
+    #V0.7 = UI testing-ish and dark/light mode
+    #V0.75 = Language specifications getting there but issue with azure sessions needs to be resolved.
+    #V0.8 = Language specification
+    #V0.9 = audio seperation integration
+    #V1.0 = completed initial prototype
+
+    while WinRun == True:
+        event, values = window.read()
+        filename = values['_In_']
+        if event == sg.WINDOW_CLOSED:
+            exit(0)
+        if event == 'Submit':
+            window['_Output_'].update(filename)
+            FileList.append(filename)
+            window_1.read()
+            event_1, values_1 = window_1.read()
+            if event_1 == 'Yes':
+                #translations and text processing
+                SourceAzure(filename)#
+                print("woo i got here")
+                print("discovered", Language_Get)
+                Azure(filename, Language_Get)
+                TextReadInOrigins()
+                TextReadInTranslations()
+                window_1.close()
+                WinRun = False
+                window.close()
+            if event_1 == 'No':
+                window_1.close()
+            if event_1 == sg.WINDOW_CLOSED:
+                window_1.close()
+        event, values = window.read()
+
+        if event == 'Play':
+            player(filename)
+            #insert audio seperation
+            WinRun = False
+            window.close()
+
+        if event == 'Change Theme':
+            print("pre change set", theme_set)
+            if theme_set == None:
+                theme_set = theme_set_back_up
+            if theme_set == 0:
+                theme_set = 1
+            elif theme_set == 1:
+                theme_set = 0
+            print("post change set", theme_set)
+            window.close()
+            return theme_set
+
+        if event == 'Help':
+            HelpingHand()
+
+
+#this is stupid now, but may be better once the audio seperation works, or not idfk at this point
+#-----------------------------------------------------------------------------------------------------------------------
+def player(file):
+    playsound(file)
+
+#as amazing as this would be, please for the love of christ change the help to be helpful,
+#no one in business appreciates humour anymore.
+#-----------------------------------------------------------------------------------------------------------------------
+def HelpingHand():
+    layout = [[sg.Text('Program Guide: ')],
+              [sg.Text('To Use the Translator, use the browse function')],
+              [sg.Text('to select your WAV file of choice, then return')],
+              [sg.Text('to the main program screen.')],
+              [sg.Text('Select the submit button and confirm to start')],
+              [sg.Text('the translation. Wait for the process')],
+              [sg.Text('to be completed. (This may take some time.)')]]
+    window = sg.Window('Help',layout,size = (325,190))
+    event, values = window.read()
+    if event == sg.WINDOW_CLOSED:
+        window.close()
+
+while ProgramShut == True:
+    if theme_set == None:
+        theme_set = 1
+        theme_set_back_up = theme_set
+    theme_set = addfile(theme_set)

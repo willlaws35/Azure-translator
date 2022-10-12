@@ -1,0 +1,94 @@
+import azure.cognitiveservices.speech as speech
+import PySimpleGUI as sg
+import winsound
+import json
+import os
+from playsound import playsound
+sg.theme('DarkGrey6')
+
+#the joys of API tat
+#speech_key, service_region = os.environ['41c7617f268a4760b6f71a896dcc7997'], os.environ['northeurope']
+
+
+#some variables which need to be moved, but where i havent decided yet magic man
+FileList = []
+TextList = []
+LangFrom = ["ENG","GER","FRA"]
+LangTo = ["ENG","GER","FRA"]
+ProgramShut = True
+
+#not so fun functions
+
+def addfile():
+    WinRun = True
+    layout = [[sg.Text('File:', size=(3, 1)), sg.Input(key='_In_', do_not_clear=True), sg.FileBrowse()],
+              [sg.Submit(key='Submit'), sg.Button("Play")],
+              [sg.Text("Files:")],
+              [sg.Combo(FileList, size = 200, key = '_Output_')],
+              [sg.Text("Translator feedback:")],
+              [sg.Combo(TextList, size = 200)],
+              [sg.Text("Origin Language:       "), sg.Combo(LangFrom, size=10)],
+              [sg.Text("Conversion Language:"), sg.Combo(LangTo, size=10)],
+              [sg.Button("Help")]]
+
+    window = sg.Window('Translator V0.3', layout, size=(450,400))
+    #V0.1 = initial program window
+    #V0.2 = text feedback and audio replay
+    #V0.3 = *hopefully* help function and azure integration
+    #V0.4 = should be azure integration like fuck that happening at V0.3
+    event, values = window.read()
+    filename = values['_In_']
+    while WinRun == True:
+        if event == sg.WINDOW_CLOSED:
+            exit(0)
+        if event == 'Submit':
+            window['_Output_'].update(filename)
+            print(filename)
+            FileList.append(filename)
+        event, values = window.read()
+        if event == 'Play':
+            player(filename)
+            WinRun = False
+            window.close()
+        if event == 'Help':
+            HelpingHand()
+
+def player(file):
+    playsound(file)
+
+def HelpingHand():
+    #do some fucking shit
+    layout = [[sg.Text('Look imma be straight with you,')],
+              [sg.Text('What on Gods green earth are you stuck on')],
+              [sg.Text('like if its a bug fair enough, you get what')],
+              [sg.Text('you pay for, but other than that what do you want')],
+              [sg.Text('seriously pop your question in google translate')],
+              [sg.Text('get your answer then go touch some grass')],
+              [sg.Text('*actual reminder, for the love of christ change this*')]]
+    window = sg.Window('Help',layout,size = (325,190))
+    event, values = window.read()
+    if event == sg.WINDOW_CLOSED:
+        window.close()
+
+
+
+#below is an absolute cluster-fuck but works perfectly, need to add a custom file finder but other than that dont breathe on the fucker.
+def TextReadIn():
+    TextLen = []
+    LineMaker = ""
+    #insert file path into open function, use double \ or it do a broke.
+    with open('C:\\Users\\willi\\Desktop\\something.txt', 'r') as importing:
+        TextChunk = importing.read()
+        TextLen = TextChunk.split()
+        for i in range(len(TextLen)):
+            if len(LineMaker)<60:
+                LineMaker = LineMaker+TextLen[i]+" "
+            elif len(LineMaker)>=60:
+                TextList.append(LineMaker)
+                LineMaker = " "
+
+
+#main bit
+while ProgramShut == True:
+    TextReadIn()
+    addfile(
